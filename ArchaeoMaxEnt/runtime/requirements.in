@@ -1,0 +1,9 @@
+# Packages for the ArchaeoMaxEnt modelling runtime (not QGIS's own Python).
+# Edit this file, then regenerate requirements.lock (see README "Building runtimes").
+elapid
+geopandas
+rasterio
+numpy
+pandas
+scikit-learn
+matplotlib

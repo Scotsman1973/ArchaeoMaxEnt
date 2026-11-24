@@ -1,0 +1,49 @@
+# This file contains metadata for your plugin.
+# This file should be included when you package your plugin.
+
+# Mandatory items:
+
+[general]
+name=ArchaeoMaxEnt
+qgisMinimumVersion=3.22
+qgisMaximumVersion=4.99
+description=Model the probability of archaeological site locations using the Maximum Entropy (MaxEnt) algorithm.
+version=0.2
+author=Andrew Prentice
+email=aaprentice@yahoo.com
+
+about=ArchaeoMaxEnt models the probability of archaeological site locations with MaxEnt. It works from common geospatial formats (GeoTIFF elevation DEM, Shapefile, GeoPackage), derives slope and aspect from the DEM, and lets the researcher weight each environmental class before modelling. Sensible defaults are suggested and can be changed, with every step logged, to increase transparency and support open science. Modelling runs in a separate, version-locked runtime (Python with elapid, geopandas, rasterio and scikit-learn at fixed versions) that is installed once from a single archive per platform, by download or offline from a file. Nothing is installed into QGIS's own Python, and the same plugin works on Windows, macOS and Linux with QGIS 3.22 or later, including QGIS 4.
+
+tracker=http://bugs
+repository=http://repo
+# End of mandatory metadata
+
+# Recommended items:
+
+hasProcessingProvider=no
+# Uncomment the following line and add your changelog:
+changelog=0.2: modelling moved to a separate, version-locked runtime (installable offline from one archive per platform); nothing installed into QGIS Python; QGIS 4 / Qt6 support; model runs in the background with progress and cancel; single-value predictors flagged.
+
+# Tags are comma separated with spaces allowed
+tags=maxent, archaeology, prediction, transparency, analysis, dem
+
+homepage=http://homepage
+category=Plugins
+icon=icon.png
+# experimental flag
+experimental=True
+
+# deprecated flag (applies to the whole plugin, not just a single version)
+deprecated=False
+
+# No Python packages need to be installed into QGIS. The modelling runtime
+# (see runtime/ and README.txt) is a separate, self-contained Python.
+# QGIS components used: Processing framework with the GDAL provider
+#   (gdal:slope, gdal:aspect).
+
+# Since QGIS 3.8, a comma separated list of QGIS plugins to be installed
+# (or upgraded) can be specified. ArchaeoMaxEnt needs no other QGIS plugins.
+# plugin_dependencies=
+
+# If the plugin can run on QGIS Server.
+server=False

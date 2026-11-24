@@ -1,0 +1,142 @@
+ArchaeoMaxEnt
+=============
+
+A QGIS plugin that models the probability of archaeological site locations
+with the Maximum Entropy (MaxEnt) algorithm.
+
+Requirements
+------------
+QGIS 3.22 or later, including QGIS 4, on Windows, macOS (13 or later) or
+Linux. Nothing needs to be installed into QGIS's own Python.
+
+The modelling itself runs in the "modelling runtime": a separate, standalone
+Python with elapid, geopandas, rasterio, scikit-learn and their dependencies
+at exact, locked versions. It is one .zip per platform (about 250 MB) and
+is installed once. The first time ArchaeoMaxEnt opens, it offers to install
+it: it downloads the ready-made runtime for your computer, or, if that is not
+possible, builds it on your computer from PyPI (5-15 minutes). The Project
+tab also has buttons for each way of installing it:
+
+  * Download and install   uses QGIS's network settings (proxy etc.);
+                           builds the runtime here if it cannot be downloaded.
+  * Install from file      for computers without internet: download the
+                           .zip for your computer elsewhere (the Project
+                           tab shows its exact file name), copy it over on a
+                           USB stick or shared drive, and choose it here.
+                           Older .tar.xz runtimes are still accepted.
+  * Build on this computer when no ready-made runtime can be downloaded:
+                           runs runtime/buildRuntime.ps1 (Windows) or
+                           runtime/buildRuntime.sh (macOS, Linux), which
+                           download Python and the locked packages (about
+                           300 MB, from PyPI) and build the .zip here, then
+                           installs it. 5-15 minutes; cancel from the QGIS
+                           task bar. The .zip is kept in
+                           archaeoMaxEnt-runtime-archives/ beside the runtime,
+                           for other computers of the same kind.
+
+The two scripts also run on their own, in a terminal:
+    bash buildRuntime.sh [OUTPUT_FOLDER]
+    powershell -ExecutionPolicy Bypass -File buildRuntime.ps1 [-OutputDir FOLDER]
+They download into a temporary folder that is deleted afterwards, check
+every download against the checksums shipped with the plugin (runtime/uv.txt
+and runtime/locks/), and change nothing else on the computer: no PATH
+or registry changes. The finished .zip goes to your Downloads folder unless
+you name another; install it with Install from file.
+
+The runtime is installed in your user application-data folder, shared by
+all QGIS profiles. Installing checks the archive's checksum, that it was
+built for your computer and for this plugin version, and that it starts,
+before replacing any previous runtime. After that, no internet is needed.
+
+When a new plugin version needs different package versions, the Project tab
+says so and names the new archive; plugin updates that keep the same
+packages keep working with the installed runtime.
+
+Slope and aspect are calculated with the QGIS Processing GDAL provider.
+
+Workflow
+--------
+1. Project
+   Name the project, state the research purpose and choose a main directory.
+   Select the geographical area (polygon layer) and the archaeological sites
+   (point layer), then choose the category field and one or more categories.
+   Inputs are copied into the project as GeoPackages.
+
+2. Geospatial Inputs
+   Import the elevation DEM (GeoTIFF, projected CRS in metres); slope and
+   aspect are derived from it. Optionally import categorical vector layers.
+   For each predictor, prepare its classes, set a weight from 0.0 to 9.0 for
+   each class (5.0 is neutral) and approve them to create a weighted raster.
+
+   The Environmental Explorer (read-only) charts how any raster or vector
+   layer is distributed across the geographical area and the sites. You can
+   also load an optional sub-area (Shapefile or GeoPackage) to compare a part
+   of the geographical area with the whole. Use these charts to inform your
+   weights; they never change model inputs.
+
+3. Modelling
+   Weighted rasters in weightedInputs/ are checked for a shared grid. Set the
+   number of background samples (random cells inside the geographical area
+   where every predictor has a value, never repeated), the random seed and, under Advanced
+   Settings, the number of spatial validation folds and the regularisation
+   multiplier. One model is fitted per category.
+
+4. Logs
+   Every step is shown here and written to logs/processing.log.
+
+Project folders
+---------------
+    rawInputs/          copies of the input layers
+    derivedInputs/      slope and aspect
+    weightedInputs/     researcher-weighted predictor rasters
+    modellingOutputs/   one folder per category: prediction.tif, evaluation.json,
+                        backgroundPoints.gpkg
+    logs/               processing.log
+
+Building and deploying
+----------------------
+Step-by-step instructions are in ../RELEASING.md. In short, two GitHub
+workflows make everything: "Modelling runtime" (one runtime .zip per
+platform) and "Plugin release" (the plugin .zip, made by
+tools/packagePlugin.py with the runtime checksums and the repository address
+filled in). For a quick local copy, pb_tool (pb_tool.cfg) or the Makefile
+also work; the runtime/ folder must be included (it holds the lock files the
+runtime is checked against).
+
+The runtime archives (see ../tools and ../.github/workflows/runtime.yml):
+
+1. Edit runtime/requirements.in (packages) or runtime/runtime.json (Python
+   version, minimum macOS version, platforms, download address).
+2. Regenerate the lock files:  uv run --no-project python tools/lockRuntime.py
+   This fails on the developer's computer if any platform lacks a wheel.
+3. Push. The "Modelling runtime" workflow builds each platform natively
+   with runtime/buildRuntime.ps1 or .sh (the same scripts users can run),
+   checks every package version against the lock, and test-installs the
+   .zip exactly as a user would.
+4. Run the workflow by hand with "publish" ticked. It checks all five
+   archives are present, writes checksums.json and creates the release the
+   plugin downloads from (it refuses to replace an existing one).
+5. Run the "Plugin release" workflow: it fetches checksums.json from that
+   release and publishes the plugin .zip.
+
+To build only for your own computer:  uv run --no-project python tools/buildRuntime.py
+(or run runtime/buildRuntime.sh / .ps1). Both use runtimeBuilder.py.
+To change the uv version the scripts download:  python tools/pinUv.py <version>
+
+How the pieces fit
+------------------
+  QGIS side (QGIS API + standard library only):
+    archaeoMaxEnt.py, archaeoMaxEntDialog.py, explorer.py, terrain.py,
+    runtimeEnv.py (find/check/install/build the runtime), runtimeClient.py
+    (run one job in it), runtimeTask.py (background tasks), shared.py,
+    projectCore.py
+  Runtime side (run by the runtime's Python, never imported by QGIS):
+    modelWorker.py (entry point), workerOperations.py (table of
+    operations), geoProcessing.py, modelEngine.py
+  Runtime building (standard library only, run by uv's Python):
+    runtimeBuilder.py, called by runtime/buildRuntime.sh and .ps1
+
+Jobs go to the runtime as JSON and come back as JSON lines (log, progress,
+result or error). To add an operation, add a function to
+workerOperations.OPERATIONS. Platform differences are in two tables at the
+top of runtimeEnv.py; compatibility is a single lock-file hash comparison.

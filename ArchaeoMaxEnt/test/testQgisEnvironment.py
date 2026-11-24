@@ -1,0 +1,60 @@
+# coding=utf-8
+"""Tests for QGIS functionality.
+
+
+.. note:: This program is free software; you can redistribute it and/or modify
+     it under the terms of the GNU General Public License as published by
+     the Free Software Foundation; either version 2 of the License, or
+     (at your option) any later version.
+
+"""
+__author__ = 'tim@linfiniti.com'
+__date__ = '20/01/2011'
+__copyright__ = ('Copyright 2012, Australia Indonesia Facility for '
+                 'Disaster Reduction')
+
+import os
+import unittest
+from qgis.core import (
+    QgsProviderRegistry,
+    QgsCoordinateReferenceSystem,
+    QgsRasterLayer)
+
+from .utilities import getQgisApp
+QGIS_APP = getQgisApp()
+
+
+class QGISTest(unittest.TestCase):
+    """Test the QGIS Environment"""
+
+    def testQgisEnvironment(self):
+        """QGIS environment has the expected providers"""
+
+        r = QgsProviderRegistry.instance()
+        self.assertIn('gdal', r.providerList())
+        self.assertIn('ogr', r.providerList())
+        self.assertIn('postgres', r.providerList())
+
+    def testProjection(self):
+        """Test that QGIS properly parses a wkt string.
+        """
+        crs = QgsCoordinateReferenceSystem()
+        wkt = (
+            'GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",'
+            'SPHEROID["WGS_1984",6378137.0,298.257223563]],'
+            'PRIMEM["Greenwich",0.0],UNIT["Degree",'
+            '0.0174532925199433]]')
+        crs.createFromWkt(wkt)
+        authId = crs.authid()
+        expectedAuthId = 'EPSG:4326'
+        self.assertEqual(authId, expectedAuthId)
+
+        # now test for a loaded layer
+        path = os.path.join(os.path.dirname(__file__), 'tenbytenraster.asc')
+        title = 'TestRaster'
+        layer = QgsRasterLayer(path, title)
+        authId = layer.crs().authid()
+        self.assertEqual(authId, expectedAuthId)
+
+if __name__ == '__main__':
+    unittest.main()

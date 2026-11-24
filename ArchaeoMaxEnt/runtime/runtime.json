@@ -1,0 +1,12 @@
+{
+  "python": "3.12.13",
+  "macosMinimum": "13.0",
+  "platforms": {
+    "windows-x86_64": "x86_64-pc-windows-msvc",
+    "macos-arm64": "aarch64-apple-darwin",
+    "macos-x86_64": "x86_64-apple-darwin",
+    "linux-x86_64": "x86_64-manylinux_2_28",
+    "linux-aarch64": "aarch64-manylinux_2_28"
+  },
+  "downloadUrl": "https://github.com/OWNER/ArchaeoMaxEnt/releases/download/runtime-{setId}/{bundleName}"
+}
