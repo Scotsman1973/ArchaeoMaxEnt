@@ -118,7 +118,26 @@ sumPlugin = tmp / "sum" / "ArchaeoMaxEnt"; shutil.copytree(PLUGIN, sumPlugin, ig
 try:
     runtimeEnv.installRuntime(ARCHIVE, tmp / "rt5", sumPlugin); check("checksum mismatch refused", False)
 except runtimeEnv.RuntimeProblem as e:
-    check("checksum mismatch refused", True, str(e))
+    check("checksum mismatch refused", "not the one published" in str(e), str(e)[:70])
+# A runtime built on this computer differs from the published file, and must still install.
+st = runtimeEnv.installRuntime(ARCHIVE, tmp / "rt5", sumPlugin, requirePublished=False)
+check("locally built runtime installs although checksums are published", st.ready, st.message)
+shutil.rmtree(tmp / "rt5")
+check("archiveIsPublished: not listed -> False", runtimeEnv.archiveIsPublished(ARCHIVE, sumPlugin) is False)
+check("archiveIsPublished: no checksums -> None", runtimeEnv.archiveIsPublished(ARCHIVE, PLUGIN) is None)
+(sumPlugin / "runtime" / "checksums.json").write_text(json.dumps({ARCHIVE.name: runtimeEnv.fileSha256(ARCHIVE)}))
+check("archiveIsPublished: listed -> True", runtimeEnv.archiveIsPublished(ARCHIVE, sumPlugin) is True)
+# A runtime for another kind of computer: say so (not "damaged"), even when checksums are published.
+otherKey = "linux-aarch64" if runtimeEnv.platformKey() != "linux-aarch64" else "linux-x86_64"
+other = tmp / f"archaeoMaxEnt-runtime-x-{otherKey}.zip"
+with zipfile.ZipFile(ARCHIVE) as source, zipfile.ZipFile(other, "w") as target:
+    manifest = json.loads(source.read("manifest.json")); manifest["platform"] = otherKey
+    target.writestr("manifest.json", json.dumps(manifest))
+try:
+    runtimeEnv.installRuntime(other, tmp / "rt6", sumPlugin); check("other computer's runtime: clear message", False)
+except runtimeEnv.RuntimeProblem as e:
+    check("other computer's runtime: clear message", "but this computer is" in str(e)
+          and runtimeEnv.expectedLock(PLUGIN)["bundleName"] in str(e), str(e))
 
 # reinstall over an existing runtime replaces it atomically
 (runtimeDir / "marker").write_text("old")

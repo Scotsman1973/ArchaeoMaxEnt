@@ -8,7 +8,7 @@ sys.path[:0] = [str(REPO / "tests" / "stubs"), str(REPO)]
 import numpy as np, rasterio, geopandas as gpd
 from rasterio.transform import from_origin
 from shapely.geometry import Point, box
-from PyQt5.QtWidgets import QApplication, QMessageBox
+from PyQt5.QtWidgets import QApplication, QFileDialog, QMessageBox
 from PyQt5.QtCore import Qt
 from ArchaeoMaxEnt import runtimeEnv, archaeoMaxEntDialog as dialogModule
 from ArchaeoMaxEnt.explorer import Explorer
@@ -165,10 +165,16 @@ if os.environ.get("SKIP_BUILD_BUTTON") != "1":
     def failingDownload(task, url, target):
         raise RuntimeError("Download failed: Error transferring - server replied: Not Found")
     dialogModule.downloadFile = failingDownload
-    dlg5 = freshDialog(); errors.clear(); dlg5.offerRuntimeInstall()
+    checksumsFile = REPO / "ArchaeoMaxEnt" / "runtime" / "checksums.json"
+    checksumsFile.write_text(json.dumps({builtZip.name: "0" * 64}))  # as in a released plugin
+    dlg5 = freshDialog(); errors.clear()
+    try:
+        dlg5.offerRuntimeInstall()
+    finally:
+        checksumsFile.unlink()
     status = runtimeEnv.runtimeStatus(runtimeDir, REPO / "ArchaeoMaxEnt")
     log5 = dlg5.logBox.toPlainText()
-    check("failed download falls back to building, then installs", status.ready and not errors
+    check("failed download falls back to building, then installs (with published checksums present)", status.ready and not errors
           and "Building it on this computer instead" in log5 and "uv checksum OK" in log5, f"{status.message}, {errors}")
 
     # No download address yet (OWNER placeholder): straight to building, no download attempted.
@@ -185,6 +191,17 @@ if os.environ.get("SKIP_BUILD_BUTTON") != "1":
           and status.ready and "No download address is set" in dlg6.logBox.toPlainText())
     check("a built runtime .zip is kept for other computers", builtZip.is_file())
     runtimeEnv.runBuildScript = realBuild
+
+    # Install from file with a runtime not in the published checksums: asked first, then installed.
+    checksumsFile.write_text(json.dumps({builtZip.name: "0" * 64}))
+    try:
+        QFileDialog.getOpenFileName = staticmethod(lambda *a, **k: (str(builtZip), ""))
+        dlg8 = freshDialog(); questions.clear(); errors.clear(); dlg8.installRuntimeFromFile()
+        status = runtimeEnv.runtimeStatus(runtimeDir, REPO / "ArchaeoMaxEnt")
+        check("Install from file: unpublished runtime asks, then installs", questions == ["Runtime file not published"]
+              and status.ready and not errors, f"{questions}, {status.message}, {errors}")
+    finally:
+        checksumsFile.unlink()
 
     # Declining: nothing happens, and the Project tab still shows what is needed.
     QMessageBox.question = staticmethod(lambda *a, **k: QMessageBox.StandardButton.No)
