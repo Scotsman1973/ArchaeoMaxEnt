@@ -1,0 +1,89 @@
+# Builds the ArchaeoMaxEnt modelling runtime on each platform, natively,
+# then (when run by hand) publishes all archives as one GitHub release.
+# Each platform is built with the same script users can run themselves
+# (ArchaeoMaxEnt/runtime/buildRuntime.ps1 on Windows, buildRuntime.sh
+# elsewhere), so every release also tests those scripts.
+name: Modelling runtime
+
+on:
+  push:
+    paths:
+      - "ArchaeoMaxEnt/runtime/**"
+      - "ArchaeoMaxEnt/modelWorker.py"
+      - "ArchaeoMaxEnt/workerOperations.py"
+      - "ArchaeoMaxEnt/runtimeBuilder.py"
+      - "ArchaeoMaxEnt/runtimeEnv.py"
+      - ".github/workflows/runtime.yml"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the archives as a GitHub release"
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-latest, platform: windows-x86_64 }
+          - { runner: macos-15, platform: macos-arm64 }
+          # Last Intel macOS runner image GitHub provides.
+          - { runner: macos-15-intel, platform: macos-x86_64 }
+          - { runner: ubuntu-22.04, platform: linux-x86_64 }
+          # Free for public repositories; private ones need a larger Arm runner.
+          - { runner: ubuntu-22.04-arm, platform: linux-aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, check and test-install the runtime (Windows PowerShell 5.1, as on users' computers)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: .\ArchaeoMaxEnt\runtime\buildRuntime.ps1 -OutputDir dist -Platform ${{ matrix.platform }}
+      - name: Build, check and test-install the runtime (the system bash, 3.2 on macOS)
+        if: runner.os != 'Windows'
+        run: /bin/bash ArchaeoMaxEnt/runtime/buildRuntime.sh dist ${{ matrix.platform }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-${{ matrix.platform }}
+          path: dist/*
+          compression-level: 0  # already zip-compressed
+
+  publish:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Check the set and write checksums.json
+        id: release
+        run: python3 tools/releaseRuntime.py dist "$GITHUB_OUTPUT"
+      - name: Refuse to replace runtimes that are already published
+        # Rebuilt archives have different checksums, which would break plugins already in use.
+        # A new release is only needed when the lock files change, and then the tag changes too.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.release.outputs.tag }}" >/dev/null 2>&1; then
+            echo "::error::Release ${{ steps.release.outputs.tag }} already exists. These runtimes are already published; nothing to do."
+            exit 1
+          fi
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ steps.release.outputs.tag }}"
+          dist/*.zip dist/*.sha256 ArchaeoMaxEnt/runtime/checksums.json
+          --title "Modelling runtime ${{ steps.release.outputs.tag }}"
+          --notes "Modelling runtimes for ArchaeoMaxEnt, one .zip per kind of computer. The plugin downloads the right one by itself; for a computer without internet, download the file for that computer here and use Install from file on the plugin's Project tab."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: ArchaeoMaxEnt/runtime/checksums.json

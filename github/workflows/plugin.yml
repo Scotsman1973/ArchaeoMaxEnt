@@ -1,0 +1,52 @@
+# Packages the plugin .zip that users install in QGIS, and publishes it as a GitHub release.
+# Run it by hand (Actions > Plugin release > Run workflow) after the "Modelling runtime"
+# workflow has published the runtimes for the plugin's current lock files.
+name: Plugin release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the plugin .zip as a GitHub release (untick to only build it)"
+        type: boolean
+        default: true
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find the runtime release this plugin needs
+        id: runtime
+        run: |
+          tag="runtime-$(python3 -c 'from ArchaeoMaxEnt import runtimeEnv; print(runtimeEnv.lockSetId("ArchaeoMaxEnt"))')"
+          version="$(sed -n 's/^version=//p' ArchaeoMaxEnt/metadata.txt | tr -d '[:space:]')"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if ! gh release download "$tag" --pattern checksums.json --dir runtimeRelease; then
+            echo "::error::No runtime release $tag yet. Run the Modelling runtime workflow with Publish ticked first."
+            exit 1
+          fi
+      - name: Package the plugin
+        run: >
+          python3 tools/packagePlugin.py --repository "$GITHUB_REPOSITORY"
+          --checksums runtimeRelease/checksums.json --output dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin
+          path: dist/*.zip
+      - name: Publish the plugin release
+        if: inputs.publish
+        run: |
+          tag="v${{ steps.runtime.outputs.version }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::Release $tag already exists. Raise version= in ArchaeoMaxEnt/metadata.txt, commit, and run again."
+            exit 1
+          fi
+          gh release create "$tag" dist/*.zip --target "$GITHUB_SHA" \
+            --title "ArchaeoMaxEnt ${{ steps.runtime.outputs.version }}" \
+            --notes "Install in QGIS: Plugins > Manage and Install Plugins > Install from ZIP, and choose ArchaeoMaxEnt-${{ steps.runtime.outputs.version }}-plugin.zip. The first time ArchaeoMaxEnt opens, it offers to install its modelling tools (runtime ${{ steps.runtime.outputs.tag }}) by itself."
