@@ -8,7 +8,7 @@ name=ArchaeoMaxEnt
 qgisMinimumVersion=3.22
 qgisMaximumVersion=4.99
 description=Model the probability of archaeological site locations using the Maximum Entropy (MaxEnt) algorithm.
-version=0.2
+version=0.2.1
 author=Andrew Prentice
 email=aaprentice@yahoo.com
 
@@ -22,7 +22,8 @@ repository=http://repo
 
 hasProcessingProvider=no
 # Uncomment the following line and add your changelog:
-changelog=0.2: modelling moved to a separate, version-locked runtime (installable offline from one archive per platform); nothing installed into QGIS Python; QGIS 4 / Qt6 support; model runs in the background with progress and cancel; single-value predictors flagged.
+changelog=0.2.1: the plugin installs its modelling runtime by itself (download, or build on this computer if that is not possible); a runtime built on this computer installs even when published checksums are present; a runtime for another kind of computer is named as such instead of "damaged"; background points only inside the geographical area; GeoTIFF geographical areas; runtimes are .zip files.
+    0.2: modelling moved to a separate, version-locked runtime (installable offline from one archive per platform); nothing installed into QGIS Python; QGIS 4 / Qt6 support; model runs in the background with progress and cancel; single-value predictors flagged.
 
 # Tags are comma separated with spaces allowed
 tags=maxent, archaeology, prediction, transparency, analysis, dem

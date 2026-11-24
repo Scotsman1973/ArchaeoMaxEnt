@@ -271,25 +271,49 @@ class ArchaeoMaxEntDialog(QDialog):
     def installRuntimeFromFile(self):
         """Install a runtime archive from disk (download, USB stick or shared drive)."""
         path, _ = QFileDialog.getOpenFileName(self, "Choose runtime archive", "", RUNTIME_FILE_FILTER)
-        if path:
-            self.installRuntimeArchive(Path(path), keepArchive=True)
+        if not path:
+            return
+        archivePath = Path(path)
 
-    def installArchive(self, task, archivePath: Path, keepArchive: bool):
-        """Check and unpack a runtime archive, then confirm every package imports (runs in a background task)."""
+        def decide(isPublished):
+            """Install a published runtime straight away; ask first about any other runtime file."""
+            if isPublished is False:
+                answer = QMessageBox.question(
+                    self, "Runtime file not published",
+                    f"{archivePath.name} is not one of the runtimes published for this version of "
+                    "ArchaeoMaxEnt.\n\nThat is expected if it was made with 'Build on this computer' on "
+                    "another computer. It can also mean the file was damaged while copying, or altered.\n\n"
+                    "Install it only if you know where it came from. Install it?")
+                if answer != QMessageBox.StandardButton.Yes:
+                    return
+            # Already checked (or accepted) above, so the install does not check the checksum again.
+            self.installRuntimeArchive(archivePath, keepArchive=True, requirePublished=False)
+
+        self.startTask("Check runtime file",
+                       lambda task: runtimeEnv.archiveIsPublished(archivePath, self.pluginDir), decide)
+
+    def installArchive(self, task, archivePath: Path, keepArchive: bool, requirePublished: bool = True):
+        """Check and unpack a runtime archive, then confirm every package imports (runs in a background task).
+
+        requirePublished=False for a runtime built on this computer, or one the
+        researcher chose to trust: see runtimeEnv.installRuntime.
+        """
         def verify(executable, runtimeFolder):
             """Start the worker in the new runtime before it replaces the old one."""
             RuntimeClient(executable, self.pluginDir, runtimeFolder).call("ping")
         task.logged.emit(f"Installing runtime from {archivePath.name}")
         try:
-            return runtimeEnv.installRuntime(archivePath, self.runtimeDir, self.pluginDir, verify=verify)
+            return runtimeEnv.installRuntime(archivePath, self.runtimeDir, self.pluginDir, verify=verify,
+                                             requirePublished=requirePublished)
         finally:
             if not keepArchive:
                 archivePath.unlink(missing_ok=True)
 
-    def installRuntimeArchive(self, archivePath: Path, keepArchive: bool):
+    def installRuntimeArchive(self, archivePath: Path, keepArchive: bool, requirePublished: bool = True):
         """Check and unpack a runtime archive in the background."""
         self.startTask("Install modelling runtime",
-                       lambda task: self.installArchive(task, archivePath, keepArchive), self.runtimeInstalled)
+                       lambda task: self.installArchive(task, archivePath, keepArchive, requirePublished),
+                       self.runtimeInstalled)
 
     def runtimeInstalled(self, status):
         """After any successful install: update the status line and run a full check."""
@@ -358,7 +382,7 @@ class ArchaeoMaxEntDialog(QDialog):
             archivePath = runtimeEnv.runBuildScript(self.pluginDir, outputDir, onLine=task.logged.emit,
                                                     isCancelled=task.isCanceled)
             task.logged.emit(f"Runtime file kept for other computers of this kind: {archivePath}")
-            return self.installArchive(task, archivePath, keepArchive=True)
+            return self.installArchive(task, archivePath, keepArchive=True, requirePublished=False)
 
         self.tabs.setCurrentIndex(LOG_TAB_INDEX)
         self.startTask("Install modelling runtime", work, self.runtimeInstalled)
@@ -405,7 +429,7 @@ class ArchaeoMaxEntDialog(QDialog):
             archivePath = runtimeEnv.runBuildScript(self.pluginDir, outputDir, onLine=task.logged.emit,
                                                     isCancelled=task.isCanceled)
             task.logged.emit(f"Runtime file kept for other computers of this kind: {archivePath}")
-            return self.installArchive(task, archivePath, keepArchive=True)
+            return self.installArchive(task, archivePath, keepArchive=True, requirePublished=False)
 
         self.startTask("Build and install modelling runtime", work, self.runtimeInstalled)
 
