@@ -57,6 +57,14 @@ MANIFEST_FORMAT = 1
 LOCK_ID_LENGTH = 12
 BUNDLE_NAME = "archaeoMaxEnt-runtime-{lockId}-{platform}.zip"
 SMOKE_TEST_SECONDS = 120
+# How each platform key is described to the researcher.
+PLATFORM_LABELS = {
+    "windows-x86_64": "Windows",
+    "macos-arm64": "a Mac with an Apple chip (M1 or later)",
+    "macos-x86_64": "a Mac with an Intel chip",
+    "linux-x86_64": "Linux on an ordinary Intel or AMD computer (x86_64)",
+    "linux-aarch64": "Linux on an Arm computer (aarch64, e.g. a Raspberry Pi)",
+}
 DOWNLOAD_OWNER_PLACEHOLDER = "OWNER"  # in runtime.json until the GitHub account is filled in
 # Scripts that download everything and build the runtime .zip on the user's own computer.
 WINDOWS_BUILD_SCRIPT = "buildRuntime.ps1"
@@ -166,7 +174,9 @@ def checkManifest(manifest: dict, expected: dict):
     if manifest.get("format") != MANIFEST_FORMAT:
         raise RuntimeProblem(f"Unsupported runtime format {manifest.get('format')!r}")
     if manifest.get("platform") != expected["platform"]:
-        raise RuntimeProblem(f"Runtime is for {manifest.get('platform')}, this computer needs {expected['platform']}")
+        theirs, ours = manifest.get("platform"), expected["platform"]
+        raise RuntimeProblem(f"This runtime is for {PLATFORM_LABELS.get(theirs, theirs)}, but this computer is "
+                             f"{PLATFORM_LABELS.get(ours, ours)}. Choose the file {expected['bundleName']} instead.")
     if manifest.get("lockHash") != expected["lockHash"]:
         raise RuntimeProblem(f"Runtime {str(manifest.get('lockHash'))[:LOCK_ID_LENGTH]} does not match this "
                              f"plugin version (needs {expected['lockId']}); install {expected['bundleName']}")
@@ -200,6 +210,15 @@ def publishedChecksums(pluginDir: Path) -> dict:
     """Return {archive name: SHA-256} published with this plugin version, if any."""
     path = Path(pluginDir) / RUNTIME_SPEC_FOLDER / CHECKSUMS_FILE
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def archiveIsPublished(archivePath: Path, pluginDir: Path):
+    """True if the file is one of the runtimes published with this plugin version (its checksum is listed),
+    False if it is not, None if this plugin version lists no checksums (e.g. a developer copy)."""
+    published = publishedChecksums(pluginDir)
+    if not published:
+        return None
+    return fileSha256(archivePath) in published.values()
 
 
 def archiveManifest(archive) -> dict:
@@ -320,21 +339,31 @@ def smokeTest(executable: Path):
         raise RuntimeProblem(f"Runtime Python does not start: {completed.stderr.strip()[-500:]}")
 
 
-def installRuntime(archivePath: Path, runtimeDir: Path, pluginDir: Path, verify=None) -> RuntimeStatus:
+def installRuntime(archivePath: Path, runtimeDir: Path, pluginDir: Path, verify=None,
+                   requirePublished: bool = True) -> RuntimeStatus:
     """Check and install a runtime archive, replacing any previous runtime only on success.
 
     Works offline: the archive can come from a download, a USB stick or a
-    shared drive. Checks, in order: the archive's checksum (when this plugin
-    version publishes one), that its manifest matches this computer and this
-    plugin's lock file, that it unpacks safely, and that its Python starts.
+    shared drive. Checks, in order: that its manifest matches this computer and
+    this plugin's lock file (so a file for another kind of computer gets a
+    message saying so); if requirePublished, that it is the runtime published
+    for this plugin version (its checksum, when this plugin version lists
+    checksums); that it unpacks safely; and that its Python starts.
+    requirePublished is False for a runtime built on this computer by the build
+    script: its packages were checked against the lock file's checksums as they
+    were downloaded, but its own checksum differs from the published file's,
+    because no two builds produce byte-identical zips.
     verify(executable, runtimeFolder), if given, is called on the unpacked runtime
     before it replaces the old one, for further checks.
     """
     archivePath, runtimeDir = Path(archivePath), Path(runtimeDir)
     expected = expectedLock(pluginDir)
-    publishedSha = publishedChecksums(pluginDir).get(expected["bundleName"])
+    with openArchive(archivePath) as archive:
+        checkManifest(archiveManifest(archive), expected)
+    publishedSha = publishedChecksums(pluginDir).get(expected["bundleName"]) if requirePublished else None
     if publishedSha and fileSha256(archivePath) != publishedSha:
-        raise RuntimeProblem("Runtime archive is damaged or altered (checksum mismatch)")
+        raise RuntimeProblem("This runtime file is not the one published for this plugin version: it was damaged "
+                             "while downloading or copying, or it was altered. Download it again.")
 
     runtimeDir.parent.mkdir(parents=True, exist_ok=True)
     incoming = runtimeDir.with_name(f"{runtimeDir.name}.incoming-{os.getpid()}")

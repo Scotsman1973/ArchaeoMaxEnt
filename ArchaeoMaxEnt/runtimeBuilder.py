@@ -213,7 +213,7 @@ def build(uv: str, buildDir: Path, distDir: Path, wantedPlatform: str | None = N
     testDir = buildDir / f"{key}-install-test"
     shutil.rmtree(testDir, ignore_errors=True)
     status = runtimeEnv.installRuntime(
-        archivePath, testDir / "runtime", PLUGIN_DIR,
+        archivePath, testDir / "runtime", PLUGIN_DIR, requirePublished=False,
         verify=lambda executable, folder: RuntimeClient(executable, PLUGIN_DIR, folder).call("ping"))
     print(f"Install test: {status.message}", flush=True)
     shutil.rmtree(testDir, ignore_errors=True)
@@ -231,7 +231,11 @@ def main(argv=None) -> int:
     parser.add_argument("--dist-dir", type=Path, required=True, help="folder for the finished .zip")
     parser.add_argument("--platform", help="stop unless building for this platform key, e.g. macos-arm64")
     options = parser.parse_args(argv)
-    archivePath = build(options.uv, options.build_dir.resolve(), options.dist_dir.resolve(), options.platform)
+    try:
+        archivePath = build(options.uv, options.build_dir.resolve(), options.dist_dir.resolve(), options.platform)
+    except runtimeEnv.RuntimeProblem as exc:
+        print(f"ERROR: {exc}", file=sys.stderr, flush=True)  # a plain message, not a Python traceback
+        return 1
     print("Finished. Install this file from the plugin's Project tab (Install from file):")
     print(f"{RESULT_PREFIX}{archivePath}", flush=True)
     return 0
